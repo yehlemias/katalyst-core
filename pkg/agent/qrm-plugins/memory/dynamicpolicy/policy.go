@@ -623,7 +623,7 @@ func (p *DynamicPolicy) RemovePod(ctx context.Context,
 		}
 	}
 
-	err = p.removePod(req.PodUid)
+	err = p.removePods(req.PodUid)
 	if err != nil {
 		general.ErrorS(err, "remove pod failed with error", "podUID", req.PodUid)
 		_ = p.emitter.StoreInt64(util.MetricNameRemovePodFailed, 1, metrics.MetricTypeNameRaw)
@@ -636,6 +636,60 @@ func (p *DynamicPolicy) RemovePod(ctx context.Context,
 	}
 
 	return &pluginapi.RemovePodResponse{}, nil
+}
+
+func (p *DynamicPolicy) RemovePodList(
+	ctx context.Context,
+	req *pluginapi.RemovePodListRequest,
+) (resp *pluginapi.RemovePodListResponse, err error) {
+	if req == nil {
+		return nil, fmt.Errorf("RemovePodList got nil req")
+	}
+	general.InfoS("called", "podUIDs", req.PodList)
+
+	p.Lock()
+	defer func() {
+		p.Unlock()
+		if err != nil {
+			_ = p.emitter.StoreInt64(util.MetricNameRemovePodListFailed, 1, metrics.MetricTypeNameRaw)
+		}
+	}()
+
+	for lastLevelEnhancementKey, handler := range p.enhancementHandlers[apiconsts.QRMPhaseRemovePod] {
+		for _, podUID := range req.PodList {
+			if p.hasLastLevelEnhancementKey(lastLevelEnhancementKey, podUID) {
+				herr := handler(ctx, p.emitter, p.metaServer,
+					&pluginapi.RemovePodRequest{PodUid: podUID},
+					p.state.GetPodResourceEntries())
+				if herr != nil {
+					return &pluginapi.RemovePodListResponse{}, herr
+				}
+			}
+		}
+	}
+
+	if p.enableMemoryAdvisor {
+		for _, podUID := range req.PodList {
+			_, err = p.advisorClient.RemovePod(ctx, &advisorsvc.RemovePodRequest{PodUid: podUID})
+			if err != nil {
+				return nil, fmt.Errorf("remove pod in QoS aware server failed with error: %v", err)
+			}
+		}
+	}
+
+	err = p.removePods(req.PodList...)
+	if err != nil {
+		general.ErrorS(err, "remove pod list failed with error", "podUIDs", req.PodList)
+		_ = p.emitter.StoreInt64(util.MetricNameRemovePodListFailed, 1, metrics.MetricTypeNameRaw)
+		return nil, err
+	}
+
+	aErr := p.adjustAllocationEntries()
+	if aErr != nil {
+		general.ErrorS(aErr, "adjustAllocationEntries failed", "podUIDs", req.PodList)
+	}
+
+	return &pluginapi.RemovePodListResponse{}, nil
 }
 
 // GetResourcesAllocation returns allocation results of corresponding resources
@@ -980,15 +1034,17 @@ func (p *DynamicPolicy) PreStartContainer(context.Context, *pluginapi.PreStartCo
 	return nil, nil
 }
 
-func (p *DynamicPolicy) removePod(podUID string) error {
+func (p *DynamicPolicy) removePods(podUIDs ...string) error {
 	podResourceEntries := p.state.GetPodResourceEntries()
-	for _, podEntries := range podResourceEntries {
-		delete(podEntries, podUID)
+	for _, podUID := range podUIDs {
+		for _, podEntries := range podResourceEntries {
+			delete(podEntries, podUID)
+		}
 	}
 
 	resourcesMachineState, err := state.GenerateMachineStateFromPodEntries(p.state.GetMachineInfo(), podResourceEntries, p.state.GetReservedMemory())
 	if err != nil {
-		general.Errorf("pod: %s, GenerateMachineStateFromPodEntries failed with error: %v", podUID, err)
+		general.Errorf("pods: %v, GenerateMachineStateFromPodEntries failed with error: %v", podUIDs, err)
 		return fmt.Errorf("calculate machineState by updated pod entries failed with error: %v", err)
 	}
 

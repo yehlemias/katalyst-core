@@ -911,7 +911,7 @@ func (p *DynamicPolicy) RemovePod(ctx context.Context,
 		}
 	}
 
-	err = p.removePod(req.PodUid, podEntries)
+	err = p.removePods(podEntries, req.PodUid)
 	if err != nil {
 		general.ErrorS(err, "remove pod failed with error", "podUID", req.PodUid)
 		return nil, err
@@ -925,8 +925,60 @@ func (p *DynamicPolicy) RemovePod(ctx context.Context,
 	return &pluginapi.RemovePodResponse{}, nil
 }
 
-func (p *DynamicPolicy) removePod(podUID string, podEntries state.PodEntries) error {
-	delete(podEntries, podUID)
+func (p *DynamicPolicy) RemovePodList(ctx context.Context,
+	req *pluginapi.RemovePodListRequest,
+) (resp *pluginapi.RemovePodListResponse, err error) {
+	if req == nil {
+		return nil, fmt.Errorf("RemovePodList got nil req")
+	}
+	general.InfoS("called", "podUIDs", req.PodList)
+	p.Lock()
+	defer func() {
+		p.Unlock()
+		if err != nil {
+			general.ErrorS(err, "remove pod list failed with error", "podUIDs", req.PodList)
+			_ = p.emitter.StoreInt64(util.MetricNameRemovePodListFailed, 1, metrics.MetricTypeNameRaw)
+		}
+	}()
+
+	pods := []string{}
+	podEntries := p.state.GetPodEntries()
+	for _, podUID := range req.PodList {
+		if len(podEntries[podUID]) == 0 {
+			continue
+		}
+		pods = append(pods, podUID)
+	}
+
+	if len(pods) == 0 {
+		return &pluginapi.RemovePodListResponse{}, nil
+	}
+
+	if p.enableCPUAdvisor {
+		for _, podUID := range pods {
+			_, err = p.advisorClient.RemovePod(ctx, &advisorsvc.RemovePodRequest{PodUid: podUID})
+			if err != nil {
+				return nil, fmt.Errorf("remove pod in QoS aware server failed with error: %v", err)
+			}
+		}
+	}
+
+	err = p.removePods(podEntries, pods...)
+	if err != nil {
+		general.ErrorS(err, "remove pod list failed with error", "podUIDs", req.PodList)
+		return nil, err
+	}
+	aErr := p.adjustAllocationEntries()
+	if aErr != nil {
+		general.ErrorS(aErr, "adjustAllocationEntries failed", "podUIDs", req.PodList)
+	}
+	return &pluginapi.RemovePodListResponse{}, nil
+}
+
+func (p *DynamicPolicy) removePods(podEntries state.PodEntries, podUID ...string) error {
+	for _, podUID := range podUID {
+		delete(podEntries, podUID)
+	}
 
 	updatedMachineState, err := generateMachineStateFromPodEntries(p.machineInfo.CPUTopology, podEntries)
 	if err != nil {

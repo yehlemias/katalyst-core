@@ -329,12 +329,27 @@ func (p *StaticPolicy) RemovePod(_ context.Context,
 	p.Lock()
 	defer p.Unlock()
 
-	if err := p.removePod(req.PodUid); err != nil {
+	if err := p.removePods(req.PodUid); err != nil {
 		general.ErrorS(err, "remove pod failed with error", "podUID", req.PodUid)
 		return nil, err
 	}
 
 	return &pluginapi.RemovePodResponse{}, nil
+}
+
+func (p *StaticPolicy) RemovePodList(_ context.Context,
+	req *pluginapi.RemovePodListRequest,
+) (*pluginapi.RemovePodListResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("RemovePod got nil req")
+	}
+	p.Lock()
+	defer p.Unlock()
+	if err := p.removePods(req.PodList...); err != nil {
+		general.ErrorS(err, "remove pod list failed with error", "podUIDs", req.PodList)
+		return nil, err
+	}
+	return &pluginapi.RemovePodListResponse{}, nil
 }
 
 // GetResourcesAllocation returns allocation results of corresponding resources
@@ -968,34 +983,37 @@ func (p *StaticPolicy) getResourceAllocationAnnotations(podAnnotations map[strin
 	return resourceAllocationAnnotations, nil
 }
 
-func (p *StaticPolicy) removePod(podUID string) error {
-	if p.CgroupV2Env {
-		cgIDList, err := p.metaServer.ExternalManager.ListCgroupIDsForPod(podUID)
-		if err != nil {
-			if general.IsErrNotFound(err) {
-				general.Warningf("cgroup ids for pod not found")
-				return nil
-			}
-			return fmt.Errorf("[NetworkStaticPolicy.removePod] list cgroup ids of pod: %s failed with error: %v", podUID, err)
-		}
-
-		for _, cgID := range cgIDList {
-			go func(cgID uint64) {
-				if err := p.metaServer.ExternalManager.ClearNetClass(cgID); err != nil {
-					general.Errorf("delete net class failed, cgID: %v, err: %v", cgID, err)
-					return
-				}
-			}(cgID)
-		}
-	}
-
+func (p *StaticPolicy) removePods(podUIDs ...string) error {
 	// update state cache
 	podEntries := p.state.GetPodEntries()
-	delete(podEntries, podUID)
+
+	for _, podUID := range podUIDs {
+		if p.CgroupV2Env {
+			cgIDList, err := p.metaServer.ExternalManager.ListCgroupIDsForPod(podUID)
+			if err != nil {
+				if general.IsErrNotFound(err) {
+					general.Warningf("cgroup ids for pod not found")
+					return nil
+				}
+				return fmt.Errorf("[NetworkStaticPolicy.removePod] list cgroup ids of pod: %s failed with error: %v", podUID, err)
+			}
+
+			for _, cgID := range cgIDList {
+				go func(cgID uint64) {
+					if err := p.metaServer.ExternalManager.ClearNetClass(cgID); err != nil {
+						general.Errorf("delete net class failed, cgID: %v, err: %v", cgID, err)
+						return
+					}
+				}(cgID)
+			}
+		}
+
+		delete(podEntries, podUID)
+	}
 
 	machineState, err := state.GenerateMachineStateFromPodEntries(p.qrmConfig, p.nics, podEntries, p.state.GetReservedBandwidth())
 	if err != nil {
-		general.Errorf("pod: %s, GenerateMachineStateFromPodEntries failed with error: %v", podUID, err)
+		general.Errorf("pods: %v, GenerateMachineStateFromPodEntries failed with error: %v", podUIDs, err)
 		return fmt.Errorf("calculate machineState by updated pod entries failed with error: %v", err)
 	}
 

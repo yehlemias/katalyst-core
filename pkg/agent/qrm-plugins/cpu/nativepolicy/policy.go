@@ -588,7 +588,7 @@ func (p *NativePolicy) RemovePod(ctx context.Context,
 		}
 	}()
 
-	err = p.removePod(req.PodUid)
+	err = p.removePods(req.PodUid)
 	if err != nil {
 		general.ErrorS(err, "remove pod failed with error", "podUID", req.PodUid)
 		return nil, err
@@ -597,12 +597,34 @@ func (p *NativePolicy) RemovePod(ctx context.Context,
 	return &pluginapi.RemovePodResponse{}, nil
 }
 
-func (p *NativePolicy) removePod(podUID string) error {
-	podEntries := p.state.GetPodEntries()
-	if len(podEntries[podUID]) == 0 {
-		return nil
+func (p *NativePolicy) RemovePodList(ctx context.Context,
+	req *pluginapi.RemovePodListRequest,
+) (resp *pluginapi.RemovePodListResponse, err error) {
+	if req == nil {
+		return nil, fmt.Errorf("RemovePodList got nil req")
 	}
-	delete(podEntries, podUID)
+	general.InfoS("is called", "podUIDList", req.PodList)
+	p.Lock()
+	defer func() {
+		p.Unlock()
+		if err != nil {
+			_ = p.emitter.StoreInt64(util.MetricNameRemovePodListFailed, 1, metrics.MetricTypeNameRaw)
+		}
+	}()
+	err = p.removePods(req.PodList...)
+	if err != nil {
+		general.ErrorS(err, "remove pod list failed with error", "podUIDList", req.PodList)
+		return nil, err
+	}
+	return &pluginapi.RemovePodListResponse{}, nil
+}
+
+func (p *NativePolicy) removePods(podUID ...string) error {
+	podEntries := p.state.GetPodEntries()
+
+	for _, podUID := range podUID {
+		delete(podEntries, podUID)
+	}
 
 	updatedMachineState, err := nativepolicyutil.GenerateMachineStateFromPodEntries(p.machineInfo.CPUTopology, podEntries)
 	if err != nil {

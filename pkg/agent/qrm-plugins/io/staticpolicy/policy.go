@@ -206,6 +206,15 @@ func (p *StaticPolicy) RemovePod(_ context.Context,
 	return &pluginapi.RemovePodResponse{}, nil
 }
 
+func (p *StaticPolicy) RemovePodList(_ context.Context,
+	req *pluginapi.RemovePodListRequest,
+) (*pluginapi.RemovePodListResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("RemovePod got nil req")
+	}
+	return &pluginapi.RemovePodListResponse{}, nil
+}
+
 // GetResourcesAllocation returns allocation results of corresponding resources
 func (p *StaticPolicy) GetResourcesAllocation(_ context.Context,
 	_ *pluginapi.GetResourcesAllocationRequest,

@@ -295,3 +295,9 @@ func (m *Stub) RemovePod(ctx context.Context, r *pluginapi.RemovePodRequest) (*p
 	log.Printf("RemovePod, %+v", r)
 	return &pluginapi.RemovePodResponse{}, nil
 }
+
+// RemovePodList removes the pod list from the resource plugin.
+func (m *Stub) RemovePodList(ctx context.Context, r *pluginapi.RemovePodListRequest) (*pluginapi.RemovePodListResponse, error) {
+	log.Printf("RemovePodList, %+v", r)
+	return &pluginapi.RemovePodListResponse{}, nil
+}

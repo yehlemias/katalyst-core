@@ -22,6 +22,7 @@ const (
 	MetricNameAllocateFailed          = "alloc_failed"
 	MetricNameGetTopologyHintsFailed  = "get_topology_hints_failed"
 	MetricNameRemovePodFailed         = "remove_pod_failed"
+	MetricNameRemovePodListFailed     = "remove_pod_list_failed"
 	MetricNameLWAdvisorServerFailed   = "lw_advisor_server_failed"
 	MetricNameHandleAdvisorRespCalled = "handle_advisor_resp_called"
 	MetricNameHandleAdvisorRespFailed = "handle_advisor_resp_failed"
