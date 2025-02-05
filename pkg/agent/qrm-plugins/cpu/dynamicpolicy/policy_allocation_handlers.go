@@ -979,6 +979,11 @@ func (p *DynamicPolicy) applyPoolsAndIsolatedInfo(poolsCPUSet map[string]machine
 	isolatedCPUSet map[string]map[string]machine.CPUSet, curEntries state.PodEntries,
 	machineState state.NUMANodeMap, sharedBindingNUMAs sets.Int,
 ) error {
+	startTime := time.Now()
+	defer func() {
+		general.InfoS("finished", "duration", time.Since(startTime).String())
+	}()
+
 	newPodEntries := make(state.PodEntries)
 	unionDedicatedIsolatedCPUSet := machine.NewCPUSet()
 
@@ -1237,6 +1242,10 @@ func (p *DynamicPolicy) applyPoolsAndIsolatedInfo(poolsCPUSet map[string]machine
 func (p *DynamicPolicy) generateNUMABindingPoolsCPUSetInPlace(poolsCPUSet map[string]machine.CPUSet,
 	poolsQuantityMap map[string]map[int]int, availableCPUs machine.CPUSet,
 ) (machine.CPUSet, error) {
+	startTime := time.Now()
+	defer func() {
+		general.InfoS("finished", "duration", time.Since(startTime).String())
+	}()
 	numaToPoolQuantityMap := make(map[int]map[string]int)
 	originalAvailableCPUSet := availableCPUs.Clone()
 	enableReclaim := p.dynamicConfig.GetDynamicConfiguration().EnableReclaim

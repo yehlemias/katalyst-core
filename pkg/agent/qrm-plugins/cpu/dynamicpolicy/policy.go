@@ -966,6 +966,10 @@ func (p *DynamicPolicy) RemovePod(ctx context.Context,
 }
 
 func (p *DynamicPolicy) removePod(podUID string, podEntries state.PodEntries) error {
+	startTime := time.Now()
+	defer func() {
+		general.InfoS("finished", "duration", time.Since(startTime).String(), "podUID", podUID)
+	}()
 	delete(podEntries, podUID)
 
 	updatedMachineState, err := generateMachineStateFromPodEntries(p.machineInfo.CPUTopology, podEntries)

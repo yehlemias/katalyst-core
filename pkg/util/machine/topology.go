@@ -19,6 +19,7 @@ package machine
 import (
 	"fmt"
 	"math"
+	"time"
 
 	info "github.com/google/cadvisor/info/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -492,6 +493,10 @@ func getUniqueCoreID(threads []int) (coreID int, err error) {
 
 // GetNumaAwareAssignments returns a mapping from NUMA id to cpu core
 func GetNumaAwareAssignments(topology *CPUTopology, cset CPUSet) (map[int]CPUSet, error) {
+	startTime := time.Now()
+	defer func() {
+		general.InfoS("finished", "duration", time.Since(startTime).String())
+	}()
 	if topology == nil {
 		return nil, fmt.Errorf("GetTopologyAwareAssignmentsByCPUSet got nil cpuset")
 	}

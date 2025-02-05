@@ -20,9 +20,11 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	"k8s.io/klog/v2"
 
+	"github.com/kubewharf/katalyst-core/pkg/util/general"
 	"github.com/kubewharf/katalyst-core/pkg/util/machine"
 )
 
@@ -105,6 +107,10 @@ func (a *cpuAccumulator) freeSockets() []int {
 
 // freeCores returns free core IDs as a slice sorted by sortAvailableCores().
 func (a *cpuAccumulator) freeCores() []int {
+	startTime := time.Now()
+	defer func() {
+		general.InfoS("finished", "duration", time.Since(startTime).String())
+	}()
 	free := []int{}
 	for _, core := range a.sortAvailableCores() {
 		if a.isCoreFree(core) {
@@ -266,6 +272,10 @@ func TakeByTopology(info *machine.KatalystMachineInfo, availableCPUs machine.CPU
 func TakeByNUMABalance(info *machine.KatalystMachineInfo, availableCPUs machine.CPUSet,
 	cpuRequirement int,
 ) (machine.CPUSet, machine.CPUSet, error) {
+	startTime := time.Now()
+	defer func() {
+		general.InfoS("finished", "duration", time.Since(startTime).String())
+	}()
 	var err error
 	acc := newCPUAccumulator(info, availableCPUs, cpuRequirement)
 	if acc.isSatisfied() {
@@ -357,6 +367,10 @@ successful:
 func TakeByNUMABalanceReversely(info *machine.KatalystMachineInfo, availableCPUs machine.CPUSet,
 	cpuRequirement int,
 ) (machine.CPUSet, machine.CPUSet, error) {
+	startTime := time.Now()
+	defer func() {
+		general.InfoS("finished", "duration", time.Since(startTime).String())
+	}()
 	var err error
 	acc := newCPUAccumulator(info, availableCPUs, cpuRequirement)
 	if acc.isSatisfied() {

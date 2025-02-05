@@ -19,6 +19,7 @@ package state
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
@@ -432,6 +433,10 @@ func CPUPreciseCeil(request float64) int {
 // machine info and reserved resources along with existed pod entries and policy name
 // todo: extracting entire state package as a common standalone utility
 func GenerateMachineStateFromPodEntriesByPolicy(topology *machine.CPUTopology, podEntries PodEntries, policyName string) (NUMANodeMap, error) {
+	startTime := time.Now()
+	defer func() {
+		general.InfoS("finished", "duration", time.Since(startTime).String())
+	}()
 	if topology == nil {
 		return nil, fmt.Errorf("GenerateMachineStateFromPodEntriesByPolicy got nil topology")
 	}
