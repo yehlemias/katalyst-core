@@ -91,7 +91,8 @@ func (p *NativePolicy) clearResidualState() {
 			return
 		}
 
-		p.state.SetPodEntries(podEntries)
-		p.state.SetMachineState(updatedMachineState)
+		p.state.SetPodEntries(podEntries, false)
+		p.state.SetMachineState(updatedMachineState, false)
+		p.state.StoreState()
 	}
 }

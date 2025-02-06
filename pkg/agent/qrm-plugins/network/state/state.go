@@ -283,12 +283,13 @@ type reader interface {
 // writer is used to store information into local states,
 // and it also provides functionality to maintain the local files
 type writer interface {
-	SetMachineState(nicMap NICMap)
-	SetPodEntries(podEntries PodEntries)
-	SetAllocationInfo(podUID, containerName string, allocationInfo *AllocationInfo)
+	SetMachineState(nicMap NICMap, writeThrough bool)
+	SetPodEntries(podEntries PodEntries, writeThrough bool)
+	SetAllocationInfo(podUID, containerName string, allocationInfo *AllocationInfo, writeThrough bool)
 
-	Delete(podUID, containerName string)
+	Delete(podUID, containerName string, writeThrough bool)
 	ClearState()
+	StoreState() error
 }
 
 // ReadonlyState interface only provides methods for tracking pod assignments
