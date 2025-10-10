@@ -179,9 +179,16 @@ func (p *DynamicPolicy) numaBindingHintHandler(_ context.Context,
 			return nil, fmt.Errorf("invalid hints for inplace update pod")
 		}
 
-		machineMemoryState := resourcesMachineState[v1.ResourceMemory]
+		machineMemoryState, ok := resourcesMachineState[v1.ResourceMemory]
+		if !ok || machineMemoryState == nil {
+			return nil, fmt.Errorf("machine memory state not found")
+		}
+
 		nodeID := allocationInfo.NumaAllocationResult.ToSliceInt()[0]
-		nodeMemoryState := machineMemoryState[nodeID]
+		nodeMemoryState, ok := machineMemoryState[nodeID]
+		if !ok || nodeMemoryState == nil {
+			return nil, fmt.Errorf("numa node memory state not found")
+		}
 
 		// the main container aggregated quantity involve all container requests of the pod in memory admit.
 		originPodAggregatedRequest := allocationInfo.AggregatedQuantity
