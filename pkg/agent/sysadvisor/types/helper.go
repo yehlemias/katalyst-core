@@ -54,7 +54,7 @@ func (ci *ContainerInfo) GetActualNUMABindingResult() (int, error) {
 		return 0, fmt.Errorf("containerInfo is nil")
 	}
 
-	return commonstate.GetSpecifiedNUMABindingNUMAID(ci.Annotations)
+	return commonstate.GetSpecifiedNUMAID(ci.Annotations)
 }
 
 func (ci *ContainerInfo) IsDedicatedNumaExclusive() bool {
