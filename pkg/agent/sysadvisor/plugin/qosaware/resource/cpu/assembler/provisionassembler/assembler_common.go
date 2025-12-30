@@ -76,9 +76,9 @@ func (pa *ProvisionAssemblerCommon) assembleDedicatedNUMAExclusiveRegion(r regio
 		return err
 	}
 
-	regionNuma := r.GetBindingNumas().ToSliceInt()[0] // always one binding numa for this type of region
-	reservedForReclaim := getNUMAsResource(*pa.reservedForReclaim, r.GetBindingNumas())
-	available := getNUMAsResource(*pa.numaAvailable, r.GetBindingNumas())
+	regionNuma := r.GetCPUAffinityNUMAs().ToSliceInt()[0] // always one cpu affinity numa for this type of region
+	reservedForReclaim := getNUMAsResource(*pa.reservedForReclaim, r.GetCPUAffinityNUMAs())
+	available := getNUMAsResource(*pa.numaAvailable, r.GetCPUAffinityNUMAs())
 	var reclaimedCoresSize int
 	reclaimedCoresLimit := float64(-1)
 

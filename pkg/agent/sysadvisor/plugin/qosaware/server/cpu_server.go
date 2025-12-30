@@ -25,6 +25,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	qosutil "github.com/kubewharf/katalyst-core/pkg/util/qos"
 	"github.com/samber/lo"
 	"google.golang.org/grpc"
 	v1 "k8s.io/api/core/v1"
@@ -596,10 +597,11 @@ func (cs *cpuServer) setContainerInfoBasedOnContainerAllocationInfo(
 	}
 
 	if info.Metadata.QosLevel == consts.PodAnnotationQoSLevelSharedCores &&
-		info.Metadata.Annotations[consts.PodAnnotationMemoryEnhancementNumaBinding] == consts.PodAnnotationMemoryEnhancementNumaBindingEnable {
+		(qosutil.AnnotationsIndicateNUMAAffinity(info.Metadata.Annotations) ||
+			qosutil.AnnotationsIndicateNUMABinding(info.Metadata.Annotations)) {
 		originOwnerPoolName, err := commonstate.GetSpecifiedNUMAPoolName(info.Metadata.QosLevel, info.Metadata.Annotations)
 		if err != nil {
-			return fmt.Errorf("get specified numa binding pool name failed: %w", err)
+			return fmt.Errorf("get specified numa binding or affinity pool name failed: %w", err)
 		}
 		ci.OriginOwnerPoolName = originOwnerPoolName
 	} else {
@@ -806,8 +808,8 @@ func (cs *cpuServer) assemblePodEntries(calculationEntriesMap map[string]*cpuadv
 		}
 	}
 
-	// currently, only pods in "dedicated_nums with numa binding" has topology aware allocations
-	if ci.IsDedicatedNumaBinding() {
+	// currently, only pods in "dedicated_nums with numa binding or affinity" has topology aware allocations
+	if ci.IsDedicatedNumaAffinity() {
 		calculationResultsByNumas := make(map[int64]*cpuadvisor.NumaCalculationResult)
 
 		for numaID, cpuset := range ci.TopologyAwareAssignments {

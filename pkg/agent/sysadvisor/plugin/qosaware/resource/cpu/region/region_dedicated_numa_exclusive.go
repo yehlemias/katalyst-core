@@ -63,7 +63,7 @@ func NewQoSRegionDedicatedNumaExclusive(ci *types.ContainerInfo, conf *config.Co
 	r := &QoSRegionDedicatedNumaExclusive{
 		QoSRegionBase: NewQoSRegionBase(regionName, ci.OwnerPoolName, configapi.QoSRegionTypeDedicatedNumaExclusive, conf, extraConf, true, metaReader, metaServer, emitter),
 	}
-	r.bindingNumas = machine.NewCPUSet(numaID)
+	r.cpuAffinityNUMAs = machine.NewCPUSet(numaID)
 	r.indicatorCurrentGetters = map[string]types.IndicatorCurrentGetter{
 		string(workloadapis.ServiceSystemIndicatorNameCPI):           r.getPodCPICurrent,
 		string(workloadapis.ServiceSystemIndicatorNameCPUUsageRatio): r.getCPUUsageRatio,
@@ -135,7 +135,7 @@ func (r *QoSRegionDedicatedNumaExclusive) updateProvisionPolicy() {
 
 		// set essentials for policy and regulator
 		internal.policy.SetPodSet(r.podSet)
-		internal.policy.SetBindingNumas(r.bindingNumas, true)
+		internal.policy.SetCPUAffinityNUMAs(r.cpuAffinityNUMAs, true)
 		internal.policy.SetEssentials(r.ResourceEssentials, r.ControlEssentials)
 
 		// run an episode of policy update
@@ -193,7 +193,7 @@ func (r *QoSRegionDedicatedNumaExclusive) getEffectiveControlKnobs() types.Contr
 
 	reclaimedCPUSize := 0
 	if reclaimedInfo, ok := r.metaReader.GetPoolInfo(commonstate.PoolNameReclaim); ok {
-		for _, numaID := range r.bindingNumas.ToSliceInt() {
+		for _, numaID := range r.cpuAffinityNUMAs.ToSliceInt() {
 			reclaimedCPUSize += reclaimedInfo.TopologyAwareAssignments[numaID].Size()
 		}
 	}
@@ -239,7 +239,7 @@ func (r *QoSRegionDedicatedNumaExclusive) getPodCPICurrent() (float64, error) {
 func (r *QoSRegionDedicatedNumaExclusive) getCPUUsageRatio() (float64, error) {
 	usage := 0.0
 	nr := 0
-	for _, numaID := range r.bindingNumas.ToSliceInt() {
+	for _, numaID := range r.cpuAffinityNUMAs.ToSliceInt() {
 		data, err := r.metaReader.GetNumaMetric(numaID, consts.MetricCPUUsageNuma)
 		if err != nil {
 			return 0, err

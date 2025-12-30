@@ -177,8 +177,8 @@ type QoSRegionBase struct {
 	types.ResourceEssentials
 	types.ControlEssentials
 
-	// bindingNumas records numas assigned to this region
-	bindingNumas machine.CPUSet
+	// cpuAffinityNUMAs records numas assigned to this region
+	cpuAffinityNUMAs machine.CPUSet
 	// podSet records current pod and containers in region keyed by pod uid and container name
 	podSet types.PodSet
 	// containerTopologyAwareAssignment changes dynamically by adding container
@@ -223,11 +223,11 @@ type QoSRegionBase struct {
 	// idle: true if containers in the region is not running as usual, maybe there is no incoming business traffic
 	idle atomic.Bool
 
-	isNumaBinding bool
+	isCPUAffinity bool
 }
 
 // NewQoSRegionBase returns a base qos region instance with common region methods
-func NewQoSRegionBase(name string, ownerPoolName string, regionType v1alpha1.QoSRegionType, conf *config.Configuration, extraConf interface{}, isNumaBinding bool,
+func NewQoSRegionBase(name string, ownerPoolName string, regionType v1alpha1.QoSRegionType, conf *config.Configuration, extraConf interface{}, isCPUAffinity bool,
 	metaReader metacache.MetaReader, metaServer *metaserver.MetaServer, emitter metrics.MetricEmitter,
 ) *QoSRegionBase {
 	r := &QoSRegionBase{
@@ -236,7 +236,7 @@ func NewQoSRegionBase(name string, ownerPoolName string, regionType v1alpha1.QoS
 		ownerPoolName: ownerPoolName,
 		regionType:    regionType,
 
-		bindingNumas:                     machine.NewCPUSet(),
+		cpuAffinityNUMAs:                 machine.NewCPUSet(),
 		podSet:                           make(types.PodSet),
 		containerTopologyAwareAssignment: make(types.TopologyAwareAssignment),
 
@@ -267,7 +267,7 @@ func NewQoSRegionBase(name string, ownerPoolName string, regionType v1alpha1.QoS
 		throttled: *atomic.NewBool(false),
 		idle:      *atomic.NewBool(false),
 
-		isNumaBinding: isNumaBinding,
+		isCPUAffinity: isCPUAffinity,
 	}
 
 	r.initHeadroomPolicy(conf, extraConf, metaReader, metaServer, emitter)
@@ -330,14 +330,14 @@ func (r *QoSRegionBase) GetMetaInfo() string {
 }
 
 func (r *QoSRegionBase) getMetaInfo() string {
-	return fmt.Sprintf("[regionName: %s, regionType: %s, ownerPoolName: %s, NUMAs: %v]", r.name, r.regionType, r.ownerPoolName, r.bindingNumas.String())
+	return fmt.Sprintf("[regionName: %s, regionType: %s, ownerPoolName: %s, NUMAs: %v]", r.name, r.regionType, r.ownerPoolName, r.cpuAffinityNUMAs.String())
 }
 
-func (r *QoSRegionBase) GetBindingNumas() machine.CPUSet {
+func (r *QoSRegionBase) GetCPUAffinityNUMAs() machine.CPUSet {
 	r.Lock()
 	defer r.Unlock()
 
-	return r.bindingNumas.Clone()
+	return r.cpuAffinityNUMAs.Clone()
 }
 
 func (r *QoSRegionBase) GetPods() types.PodSet {
@@ -369,11 +369,11 @@ func (r *QoSRegionBase) getPodsRequest() float64 {
 	return requests
 }
 
-func (r *QoSRegionBase) SetBindingNumas(numas machine.CPUSet) {
+func (r *QoSRegionBase) SetCPUAffinityNUMAs(numas machine.CPUSet) {
 	r.Lock()
 	defer r.Unlock()
 
-	r.bindingNumas = numas
+	r.cpuAffinityNUMAs = numas
 }
 
 func (r *QoSRegionBase) SetEssentials(essentials types.ResourceEssentials) {
@@ -387,8 +387,8 @@ func (r *QoSRegionBase) SetThrottled(throttled bool) {
 	r.throttled.Store(throttled)
 }
 
-func (r *QoSRegionBase) IsNumaBinding() bool {
-	return r.isNumaBinding
+func (r *QoSRegionBase) IsNUMAAffinity() bool {
+	return r.isCPUAffinity
 }
 
 func (r *QoSRegionBase) AddContainer(ci *types.ContainerInfo) error {
@@ -423,7 +423,7 @@ func (r *QoSRegionBase) TryUpdateHeadroom() {
 
 		// set essentials for policy
 		internal.policy.SetPodSet(r.podSet)
-		internal.policy.SetBindingNumas(r.bindingNumas)
+		internal.policy.SetCPUAffinityNUMAs(r.cpuAffinityNUMAs)
 		internal.policy.SetEssentials(r.ResourceEssentials)
 
 		// run an episode of policy and calculator update
@@ -491,7 +491,7 @@ func (r *QoSRegionBase) GetHeadroom() (float64, error) {
 			metrics.ConvertMapToTags(map[string]string{
 				metricTagKeyRegionType: string(r.regionType),
 				metricTagKeyRegionName: r.name, metricTagKeyPolicyName: string(internal.name),
-				metricTagKeyRegionNUMAs: r.bindingNumas.String(),
+				metricTagKeyRegionNUMAs: r.cpuAffinityNUMAs.String(),
 			})...)
 		r.headroomPolicyNameInUse = internal.name
 		return headroom, nil
@@ -558,7 +558,7 @@ func (r *QoSRegionBase) GetControlEssentials() types.ControlEssentials {
 }
 
 // getRegionNameFromMetaCache returns region name owned by container from metacache,
-// to restore region info after restart. If numaID is specified, binding numas of the
+// to restore region info after restart. If numaID is specified, cpu affinity numas of the
 // region will be checked, otherwise only one region should be owned by container.
 func getRegionNameFromMetaCache(ci *types.ContainerInfo, numaID int, metaReader metacache.MetaReader) string {
 	if ci.QoSLevel == consts.PodAnnotationQoSLevelSharedCores {
@@ -568,12 +568,12 @@ func getRegionNameFromMetaCache(ci *types.ContainerInfo, numaID int, metaReader 
 			regionInfo, ok := metaReader.GetRegionInfo(regionName)
 			if ok {
 				// the region-name is valid if it suits it follows constrains below
-				// - current container is numa-binding and the region is for numa-binding and
-				//   the region's binding numa is the same as the container's numaID
+				// - current container is numa-affinity and the region is for numa-affinity and
+				//   the region's cpu affinity numa is the same as the container's numaID
 				// - current container is isolated and the region is for isolation-type
 				// - current container isn't isolated and the region is for share-type
 
-				if ci.IsNumaBinding() {
+				if ci.IsNUMAAffinity() {
 					regionNUMAs := regionInfo.BindingNumas.ToSliceInt()
 					if len(regionNUMAs) != 1 || regionNUMAs[0] != numaID {
 						return ""
@@ -587,7 +587,7 @@ func getRegionNameFromMetaCache(ci *types.ContainerInfo, numaID int, metaReader 
 				}
 			}
 		}
-	} else if ci.IsDedicatedNumaBinding() {
+	} else if ci.IsDedicatedNUMAAffinity() {
 		for regionName := range ci.RegionNames {
 			regionInfo, ok := metaReader.GetRegionInfo(regionName)
 			if ok && regionInfo.RegionType == v1alpha1.QoSRegionTypeDedicatedNumaExclusive {
@@ -617,7 +617,7 @@ func (r *QoSRegionBase) initProvisionPolicy(conf *config.Configuration, extraCon
 	for _, policyName := range configuredProvisionPolicy {
 		if initializer, ok := initializers[policyName]; ok {
 			policy := initializer(r.name, r.regionType, r.ownerPoolName, conf, extraConf, metaReader, metaServer, emitter)
-			policy.SetBindingNumas(r.bindingNumas, false)
+			policy.SetCPUAffinityNUMAs(r.cpuAffinityNUMAs, false)
 			r.provisionPolicies = append(r.provisionPolicies, &internalProvisionPolicy{
 				name:                policyName,
 				policy:              policy,
@@ -739,7 +739,7 @@ func (r *QoSRegionBase) regulateProvisionControlKnob(originControlKnob map[types
 				{Key: metricTagKeyControlKnobName, Val: string(knob)},
 				{Key: metricTagKeyControlKnobAction, Val: string(value.Action)},
 			}...)
-			klog.InfoS("[qosaware-cpu] get regulated control knob", "region", r.name, "bindingNumas", r.bindingNumas.String(),
+			klog.InfoS("[qosaware-cpu] get regulated control knob", "region", r.name, "cpuAffinityNUMAs", r.cpuAffinityNUMAs.String(),
 				"policy", policy, "knob", knob, "action", value.Action, "value", value.Value)
 		}
 	}
@@ -784,8 +784,8 @@ func (r *QoSRegionBase) getIndicators() (types.Indicator, error) {
 
 		_ = r.emitter.StoreFloat64(metricRegionIndicatorTargetRaw, target,
 			metrics.MetricTypeNameRaw, metrics.ConvertMapToTags(map[string]string{
-				"indicator_name": string(indicatorName),
-				"binding_numas":  r.bindingNumas.String(),
+				"indicator_name":     string(indicatorName),
+				"cpu_affinity_numas": r.cpuAffinityNUMAs.String(),
 			})...)
 	}
 	if r.conf.PolicyRama.EnableBorwein && r.provisionPolicyNameInUse == types.CPUProvisionPolicyRama {
@@ -905,7 +905,7 @@ func (r *QoSRegionBase) IsIdle() bool {
 // available for Intel
 func (r *QoSRegionBase) getMemoryAccessWriteLatency() (float64, error) {
 	latency := 0.0
-	for _, numaID := range r.bindingNumas.ToSliceInt() {
+	for _, numaID := range r.cpuAffinityNUMAs.ToSliceInt() {
 		data, err := r.metaReader.GetNumaMetric(numaID, pkgconsts.MetricMemLatencyWriteNuma)
 		if err != nil {
 			return 0, err
@@ -919,7 +919,7 @@ func (r *QoSRegionBase) getMemoryAccessWriteLatency() (float64, error) {
 // available for Intel
 func (r *QoSRegionBase) getMemoryAccessReadLatency() (float64, error) {
 	latency := 0.0
-	for _, numaID := range r.bindingNumas.ToSliceInt() {
+	for _, numaID := range r.cpuAffinityNUMAs.ToSliceInt() {
 		data, err := r.metaReader.GetNumaMetric(numaID, pkgconsts.MetricMemLatencyReadNuma)
 		if err != nil {
 			return 0, err
@@ -933,7 +933,7 @@ func (r *QoSRegionBase) getMemoryAccessReadLatency() (float64, error) {
 // available for AMD
 func (r *QoSRegionBase) getMemoryL3MissLatency() (float64, error) {
 	latency := 0.0
-	for _, numaID := range r.bindingNumas.ToSliceInt() {
+	for _, numaID := range r.cpuAffinityNUMAs.ToSliceInt() {
 		data, err := r.metaReader.GetNumaMetric(numaID, pkgconsts.MetricMemAMDL3MissLatencyNuma)
 		if err != nil {
 			return 0, err
@@ -946,8 +946,8 @@ func (r *QoSRegionBase) getMemoryL3MissLatency() (float64, error) {
 
 func (r *QoSRegionBase) getEffectiveReclaimResource() (quota float64, cpusetSize int, err error) {
 	numaID := commonstate.FakedNUMAID
-	if r.isNumaBinding {
-		numaID = r.bindingNumas.ToSliceInt()[0]
+	if r.isCPUAffinity {
+		numaID = r.cpuAffinityNUMAs.ToSliceInt()[0]
 	}
 
 	quotaCtrlKnobEnabled, err := metacache.IsQuotaCtrlKnobEnabled(r.metaReader)
@@ -966,7 +966,7 @@ func (r *QoSRegionBase) getEffectiveReclaimResource() (quota float64, cpusetSize
 		quota = float64(cpuStats.CpuQuota) / float64(cpuStats.CpuPeriod)
 	}
 
-	for _, numaID := range r.bindingNumas.ToSliceInt() {
+	for _, numaID := range r.cpuAffinityNUMAs.ToSliceInt() {
 		if reclaimedInfo, ok := r.metaReader.GetPoolInfo(commonstate.PoolNameReclaim); ok {
 			cpusetSize += reclaimedInfo.TopologyAwareAssignments[numaID].Size()
 		}
