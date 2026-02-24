@@ -25,7 +25,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	pluginapi "k8s.io/kubelet/pkg/apis/resourceplugin/v1alpha1"
 
-	apiconsts "github.com/kubewharf/katalyst-api/pkg/consts"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/commonstate"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/hintoptimizer"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/state"
@@ -108,12 +107,10 @@ func (p *DynamicPolicy) dedicatedCoresHintHandler(ctx context.Context,
 		return nil, fmt.Errorf("not support inplace update resize for dedicated cores")
 	}
 
-	switch req.Annotations[apiconsts.PodAnnotationMemoryEnhancementNumaBinding] {
-	case apiconsts.PodAnnotationMemoryEnhancementNumaBindingEnable:
+	if qosutil.AnnotationsIndicateNUMABinding(req.Annotations) || qosutil.AnnotationsIndicateCPUAffinity(req.Annotations) {
 		return p.dedicatedCoresWithNUMABindingHintHandler(ctx, req)
-	default:
-		return p.dedicatedCoresWithoutNUMABindingHintHandler(ctx, req)
 	}
+	return p.dedicatedCoresWithoutNUMABindingHintHandler(ctx, req)
 }
 
 func (p *DynamicPolicy) dedicatedCoresWithNUMABindingHintHandler(_ context.Context,

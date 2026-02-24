@@ -476,6 +476,17 @@ func (p *DynamicPolicy) dedicatedCoresWithNUMABindingAllocationHandler(ctx conte
 			req.PodNamespace, req.PodName, req.ContainerName, err)
 		return nil, fmt.Errorf("PackResourceAllocationResponseByAllocationInfo failed with error: %v", err)
 	}
+
+	// if numa affinity is indicated, but numa binding is not, update numa allocation result
+	if qosutil.AnnotationsIndicateCPUAffinity(req.Annotations) && !qosutil.AnnotationsIndicateNUMABinding(req.Annotations) {
+		err = p.numaAllocationReactor.UpdateAllocation(ctx, allocationInfo)
+		if err != nil {
+			general.Errorf("pod: %s/%s, container: %s UpdateNUMAAllocationResult failed with error: %v",
+				req.PodNamespace, req.PodName, req.ContainerName, err)
+			return nil, fmt.Errorf("UpdateNUMAAllocationResult failed with error: %v", err)
+		}
+	}
+
 	return resp, nil
 }
 
@@ -568,6 +579,16 @@ func (p *DynamicPolicy) sharedCoresWithNUMABindingAllocationHandler(ctx context.
 			req.PodNamespace, req.PodName, req.ContainerName, err)
 		return nil, fmt.Errorf("PackResourceAllocationResponseByAllocationInfo failed with error: %v", err)
 	}
+
+	if qosutil.AnnotationsIndicateCPUAffinity(req.Annotations) && !qosutil.AnnotationsIndicateNUMABinding(req.Annotations) {
+		err = p.numaAllocationReactor.UpdateAllocation(ctx, allocationInfo)
+		if err != nil {
+			general.Errorf("pod: %s/%s, container: %s UpdateNUMAAllocationResult failed with error: %v",
+				req.PodNamespace, req.PodName, req.ContainerName, err)
+			return nil, fmt.Errorf("UpdateNUMAAllocationResult failed with error: %v", err)
+		}
+	}
+
 	return resp, nil
 }
 
@@ -596,7 +617,7 @@ func (p *DynamicPolicy) allocateNumaBindingCPUs(numCPUs int, hint *pluginapi.Top
 		// todo: currently we hack dedicated_cores with NUMA binding take up whole NUMA,
 		//  and we will modify strategy here if assumption above breaks.
 		alignedCPUs = alignedAvailableCPUs.Clone()
-	} else {
+	} else if qosutil.AnnotationsIndicateNUMABinding(reqAnnotations) {
 		var err error
 		alignedCPUs, err = calculator.TakeByTopology(p.machineInfo, alignedAvailableCPUs, numCPUs, true)
 		if err != nil {
@@ -606,6 +627,22 @@ func (p *DynamicPolicy) allocateNumaBindingCPUs(numCPUs int, hint *pluginapi.Top
 
 			return machine.NewCPUSet(),
 				fmt.Errorf("take cpu for NUMA not exclusive binding container failed with err: %v", err)
+		}
+	} else if qosutil.AnnotationsIndicateCPUAffinity(reqAnnotations) {
+		var err error
+		// allocate cpu for numa affinity pod, prefer to allocate cpus spread across NUMA nodes
+		alignedAvailableCPUsInNuma := map[int]machine.CPUSet{}
+		for _, numaNode := range hint.Nodes {
+			alignedAvailableCPUsInNuma[int(numaNode)] = machineState[int(numaNode)].GetAvailableCPUSet(p.reservedCPUs)
+		}
+		alignedCPUs, err = calculator.TakeByTopologyWithSpreading(p.machineInfo, alignedAvailableCPUsInNuma, numCPUs, true)
+		if err != nil {
+			general.ErrorS(err, "take cpu for NUMA affinity container failed",
+				"hints", hint.Nodes,
+				"alignedAvailableCPUs", alignedAvailableCPUs.String())
+
+			return machine.NewCPUSet(),
+				fmt.Errorf("take cpu for NUMA affinity container failed with err: %v", err)
 		}
 	}
 

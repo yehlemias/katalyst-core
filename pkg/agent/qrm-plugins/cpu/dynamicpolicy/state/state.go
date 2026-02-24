@@ -627,7 +627,7 @@ type reader interface {
 type writer interface {
 	SetMachineState(numaNodeMap NUMANodeMap, persist bool)
 	SetNUMAHeadroom(numaHeadroom map[int]float64, persist bool)
-	SetPodEntries(podEntries PodEntries, writeThrough bool)
+	SetPodEntries(podEntries PodEntries, persist bool)
 	SetAllocationInfo(podUID string, containerName string, allocationInfo *AllocationInfo, persist bool)
 	SetAllowSharedCoresOverlapReclaimedCores(allowSharedCoresOverlapReclaimedCores, persist bool)
 

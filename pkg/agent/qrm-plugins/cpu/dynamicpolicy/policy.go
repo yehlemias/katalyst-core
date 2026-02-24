@@ -47,10 +47,12 @@ import (
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/hintoptimizer/registry"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/irqtuner"
 	irqtuingcontroller "github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/irqtuner/controller"
+	cpureactor "github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/reactor"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/state"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/dynamicpolicy/validator"
 	cpuutil "github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/cpu/util"
 	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/util"
+	"github.com/kubewharf/katalyst-core/pkg/agent/qrm-plugins/util/reactor"
 	"github.com/kubewharf/katalyst-core/pkg/agent/utilcomponent/featuregatenegotiation"
 	"github.com/kubewharf/katalyst-core/pkg/agent/utilcomponent/periodicalhandler"
 	"github.com/kubewharf/katalyst-core/pkg/config"
@@ -141,6 +143,8 @@ type DynamicPolicy struct {
 
 	sharedCoresNUMABindingHintOptimizer    hintoptimizer.HintOptimizer
 	dedicatedCoresNUMABindingHintOptimizer hintoptimizer.HintOptimizer
+
+	numaAllocationReactor reactor.AllocationReactor
 }
 
 func NewDynamicPolicy(agentCtx *agent.GenericContext, conf *config.Configuration,
@@ -294,6 +298,12 @@ func NewDynamicPolicy(agentCtx *agent.GenericContext, conf *config.Configuration
 	if err != nil {
 		return false, agent.ComponentStub{}, fmt.Errorf("dynamic policy new plugin wrapper failed with error: %v", err)
 	}
+
+	policyImplement.numaAllocationReactor = cpureactor.NewNUMAPodAllocationReactor(
+		reactor.NewPodAllocationReactor(
+			agentCtx.MetaServer.PodFetcher,
+			agentCtx.Client.KubeClient,
+		))
 
 	return true, &agent.PluginWrapper{GenericPlugin: pluginWrapper}, nil
 }

@@ -97,3 +97,9 @@ func GetPodCPUBurstPercentFromCPUEnhancement(qosConf *generic.QoSConfiguration, 
 
 	return cpuBurstPercent, true, nil
 }
+
+// AnnotationsIndicateCPUAffinity indicates whether it is a CPU affinity Pod.
+func AnnotationsIndicateCPUAffinity(annotations map[string]string) bool {
+	return annotations[consts.PodAnnotationCPUEnhancementNumaAffinity] ==
+		consts.PodAnnotationCPUEnhancementNumaAffinityEnable
+}

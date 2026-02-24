@@ -239,6 +239,17 @@ func (am *AllocationMeta) CheckNUMABinding() bool {
 		consts.PodAnnotationMemoryEnhancementNumaBindingEnable
 }
 
+// CheckCPUNUMABinding returns true if the AllocationInfo is for pod with cpu-numa-affinity enhancement
+func (am *AllocationMeta) CheckCPUNUMABinding() bool {
+	if am == nil {
+		return false
+	}
+	return am.Annotations[consts.PodAnnotationMemoryEnhancementNumaBinding] ==
+		consts.PodAnnotationMemoryEnhancementNumaBindingEnable ||
+		am.Annotations[consts.PodAnnotationCPUEnhancementNumaAffinityEnable] ==
+			consts.PodAnnotationCPUEnhancementNumaAffinityEnable
+}
+
 func (am *AllocationMeta) CheckNUMANotShare() bool {
 	if am == nil {
 		return false
@@ -315,4 +326,13 @@ func (am *AllocationMeta) CheckDedicatedPool() bool {
 		return false
 	}
 	return am.OwnerPoolName == PoolNameDedicated
+}
+
+func (am *AllocationMeta) CheckCPUAffinity() bool {
+	if am == nil {
+		return false
+	}
+	return am.CheckNUMABinding() ||
+		am.Annotations[consts.PodAnnotationCPUEnhancementNumaAffinity] ==
+			consts.PodAnnotationCPUEnhancementNumaAffinityEnable
 }
